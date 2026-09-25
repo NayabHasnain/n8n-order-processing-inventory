@@ -1,0 +1,1176 @@
+{
+  "name": "Order Processing and Inventory – Public Template",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Order Processing Demo",
+        "formDescription": "Submit a fictional order to test the automated order-processing workflow. Do not enter real customer or payment information.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Order Reference",
+              "fieldName": "order_reference",
+              "placeholder": "WEB-1001",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Customer Name",
+              "fieldName": "customer_name",
+              "placeholder": "Taylor Reed",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Customer Email",
+              "fieldType": "email",
+              "fieldName": "customer_email",
+              "placeholder": "taylor.reed@example.com",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Delivery Postcode",
+              "fieldName": "delivery_postcode",
+              "placeholder": "M1 1AE",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Shipping Method",
+              "fieldType": "dropdown",
+              "fieldName": "shipping_method",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Standard"
+                  },
+                  {
+                    "option": "Express"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Order Items",
+              "fieldType": "textarea",
+              "fieldName": "items_json",
+              "placeholder": "Enter the order items as a JSON array",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Customer Notes",
+              "fieldType": "textarea",
+              "fieldName": "customer_notes",
+              "placeholder": "Leave the parcel with reception."
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {
+          "buttonLabel": "Submit Test Order",
+          "ignoreBots": true,
+          "useWorkflowTimezone": true
+        }
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        -2240,
+        -1072
+      ],
+      "id": "30412edd-11af-4741-97a5-2c42ced1b3e2",
+      "name": "Order Form"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "808cbd8d-817f-41c5-abe2-c8cfa8cf6d16",
+              "name": "=customer_name",
+              "value": "={{ $json.customer_name.trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "2975025f-3f59-4ace-983e-429a0a71c5d7",
+              "name": "customer_email",
+              "value": "={{ $json.customer_email.trim().toLowerCase() }}",
+              "type": "string"
+            },
+            {
+              "id": "cf41322f-4998-45e7-acfd-27b48e62a46b",
+              "name": "delivery_postcode",
+              "value": "={{ $json.delivery_postcode.trim().toUpperCase().replace(/\\s+/g, ' ') }}",
+              "type": "string"
+            },
+            {
+              "id": "c4364be1-7107-486d-bf8a-972e90b65c7b",
+              "name": "shipping_method",
+              "value": "={{ $json.shipping_method.trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "4308136c-b21e-4f16-b2cc-9f790c6e0b3d",
+              "name": "items_json",
+              "value": "={{ $json.items_json.trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "5a54a843-ba4e-43a0-b9b4-a84019ec5cd8",
+              "name": "customer_notes",
+              "value": "={{ ($json.customer_notes ?? '').trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "2296aae7-4c78-4ea9-a303-a687a6c5cccb",
+              "name": "received_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "a94a0afc-4c44-408c-8464-2322eab665c6",
+              "name": "status",
+              "value": "Received",
+              "type": "string"
+            },
+            {
+              "id": "79352264-c533-40b3-a63e-5f37600cf2a8",
+              "name": "source",
+              "value": "n8n Form",
+              "type": "string"
+            },
+            {
+              "id": "51909135-8a76-401e-838f-ef5351a86069",
+              "name": "order_reference",
+              "value": "={{ $json.order_reference }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -2048,
+        -1200
+      ],
+      "id": "8142be34-afcd-43a0-a07e-f2aa6100af62",
+      "name": "Normalise Order Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map((inputItem) => {\n  const order = inputItem.json;\n\n  try {\n    const parsedItems = JSON.parse(order.items_json);\n\n    if (!Array.isArray(parsedItems) || parsedItems.length === 0) {\n      return {\n        json: {\n          ...order,\n          items: [],\n          item_count: 0,\n          valid_order: false,\n          validation_error: 'The order must contain at least one item.'\n        }\n      };\n    }\n\n    const items = parsedItems.map((item) => ({\n      sku: String(item?.sku ?? '').trim().toUpperCase(),\n      name: String(item?.name ?? '').trim(),\n      quantity: Number(item?.quantity)\n    }));\n\n    const invalidItem = items.find((item) =>\n      item.sku === '' ||\n      item.name === '' ||\n      !Number.isInteger(item.quantity) ||\n      item.quantity < 1\n    );\n\n    return {\n      json: {\n        ...order,\n        items,\n        item_count: items.length,\n        valid_order: !invalidItem,\n        validation_error: invalidItem\n          ? 'Every item requires a SKU, name and positive whole-number quantity.'\n          : ''\n      }\n    };\n  } catch (error) {\n    return {\n      json: {\n        ...order,\n        items: [],\n        item_count: 0,\n        valid_order: false,\n        validation_error: 'Order items must contain valid JSON.'\n      }\n    };\n  }\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1840,
+        -1200
+      ],
+      "id": "b409d026-fa0c-4be3-a267-0c2779436c66",
+      "name": "Parse Order Items"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "80ed6d97-ed0f-47f4-bc0a-10dcb9909df9",
+              "leftValue": "={{ $json.valid_order }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1648,
+        -1200
+      ],
+      "id": "46bf0dd7-ab6d-4b43-b2d7-1b32448d3c89",
+      "name": "Valid Order?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ce084bc6-eadd-4e5a-b2a4-713760f1b532",
+              "name": "status",
+              "value": "Rejected",
+              "type": "string"
+            },
+            {
+              "id": "c0011b1b-502c-46a8-83d1-d9a1cacb9cc4",
+              "name": "rejection_stage",
+              "value": "Order validation",
+              "type": "string"
+            },
+            {
+              "id": "d65ef2b6-e97b-4ecc-98ce-bdfd7ab9cfac",
+              "name": "rejection_reason",
+              "value": "={{ $json.validation_error }}",
+              "type": "string"
+            },
+            {
+              "id": "b42e0511-f861-4514-8539-6de950a2e9c3",
+              "name": "rejected_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -1504,
+        -912
+      ],
+      "id": "e3531a61-6c50-4d3b-a88a-e2fcd042f11e",
+      "name": "Prepare Validation Rejection"
+    },
+    {
+      "parameters": {
+        "operation": "rowNotExists",
+        "dataTableId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_PROCESSED_ORDERS_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "processed_orders"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "order_reference",
+              "keyValue": "={{ $json.order_reference }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -1344,
+        -1248
+      ],
+      "id": "d38f9bd8-704d-4e21-a9c9-09ae2a5f0331",
+      "name": "New Order Only",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "items",
+        "include": "allOtherFields",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -784,
+        -1264
+      ],
+      "id": "63be3165-6f1e-4c8a-b462-bb8c044fbe48",
+      "name": "Split Order Items"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_INVENTORY_PRODUCTS_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "inventory_products"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "sku",
+              "keyValue": "={{ $json.items.sku }}"
+            }
+          ]
+        },
+        "limit": 1
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -576,
+        -1200
+      ],
+      "id": "48efa3d2-122d-4fe5-a8bd-c2a8c0c81508",
+      "name": "Look Up Inventory Product"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "38fdc803-ee46-4c09-99c1-99db875aefc3",
+              "name": "order_reference",
+              "value": "={{ $('Split Order Items').item.json.order_reference }}",
+              "type": "string"
+            },
+            {
+              "id": "2fddda98-987b-4c07-ad28-b61a583dd6c7",
+              "name": "customer_name",
+              "value": "={{ $('Split Order Items').item.json.customer_name }}",
+              "type": "string"
+            },
+            {
+              "id": "19c34f21-18d9-4484-a18f-0d944738b613",
+              "name": "customer_email",
+              "value": "={{ $('Split Order Items').item.json.customer_email }}",
+              "type": "string"
+            },
+            {
+              "id": "6ea831d5-7bb4-4910-8e84-9b1e7d1360eb",
+              "name": "requested_quantity",
+              "value": "={{ Number($('Split Order Items').item.json.items.quantity) }}",
+              "type": "number"
+            },
+            {
+              "id": "e0102d52-6199-4adb-ac21-b39d8586bbe6",
+              "name": "stock_sufficient",
+              "value": "={{ $json.active === true && Number($json.stock_quantity) >= Number($('Split Order Items').item.json.items.quantity) }}",
+              "type": "boolean"
+            },
+            {
+              "id": "ca2d7146-3764-49a9-8143-b4dcb96c5c25",
+              "name": "remaining_stock",
+              "value": "={{ Number($json.stock_quantity) - Number($('Split Order Items').item.json.items.quantity) }}",
+              "type": "number"
+            },
+            {
+              "id": "78488841-90f7-48fa-9552-0a94a87cadd8",
+              "name": "line_total",
+              "value": "={{ Math.round(Number($json.unit_price) * Number($('Split Order Items').item.json.items.quantity) * 100) / 100 }}",
+              "type": "number"
+            },
+            {
+              "id": "f9797440-3ca5-42f0-aeb7-e29a49601db6",
+              "name": "shipping_method",
+              "value": "={{ $('Split Order Items').item.json.shipping_method }}",
+              "type": "string"
+            },
+            {
+              "id": "ceb28dd8-d0d1-44f1-901c-ae5a5100c6bb",
+              "name": "delivery_postcode",
+              "value": "={{ $('Split Order Items').item.json.delivery_postcode }}",
+              "type": "string"
+            },
+            {
+              "id": "72e5df89-f239-4b61-a32e-fb0e8aef30d6",
+              "name": "customer_notes",
+              "value": "={{ $('Split Order Items').item.json.customer_notes }}",
+              "type": "string"
+            },
+            {
+              "id": "82ba67e9-565a-433c-9b47-941d9ca0cc8b",
+              "name": "received_at",
+              "value": "={{ $('Split Order Items').item.json.received_at }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -352,
+        -1216
+      ],
+      "id": "a5c5b1af-159a-425d-b3a1-4706e7884bdd",
+      "name": "Evaluate Inventory Item"
+    },
+    {
+      "parameters": {
+        "jsCode": "const lines = $input.all().map(item => item.json);\n\nconst orderTotal = Math.round(\n  lines.reduce((sum, line) => sum + Number(line.line_total || 0), 0) * 100\n) / 100;\n\nreturn [{\n  json: {\n    order_reference: lines[0]?.order_reference ?? '',\n    customer_name: lines[0]?.customer_name ?? '',\n    customer_email: lines[0]?.customer_email ?? '',\n    delivery_postcode: lines[0]?.delivery_postcode ?? '',\n    shipping_method: lines[0]?.shipping_method ?? '',\n    customer_notes: lines[0]?.customer_notes ?? '',\n    received_at: lines[0]?.received_at ?? '',\n    item_count: lines.length,\n    order_total: orderTotal,\n    all_stock_sufficient: lines.every(\n      line => line.stock_sufficient === true\n    ),\n    low_stock_after_order: lines.some(\n      line => Number(line.remaining_stock) <= Number(line.reorder_level)\n    ),\n    lines\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -112,
+        -1152
+      ],
+      "id": "5569baf4-1b06-4fa3-b229-41c64d26fbda",
+      "name": "Summarise Order Assessment"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b09599ee-c307-4084-bd80-d4f684a9a59c",
+              "leftValue": "={{ $json.all_stock_sufficient }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        176,
+        -1120
+      ],
+      "id": "9ee6cbeb-4d6a-4595-baef-7bf9d9214020",
+      "name": "All Stock Available?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "79ecb5cf-f552-4b03-94c8-79e0792a247b",
+              "name": "status",
+              "value": "Rejected",
+              "type": "string"
+            },
+            {
+              "id": "19783108-77d4-406e-a3a5-7435370419a3",
+              "name": "rejection_stage",
+              "value": "Inventory check",
+              "type": "string"
+            },
+            {
+              "id": "b4641911-2bf1-40e4-b346-1dd2fd87bdbc",
+              "name": "rejection_reason",
+              "value": "={{ 'Insufficient stock for: ' + $json.lines.filter(line => line.stock_sufficient !== true).map(line => line.sku).join(', ') }}",
+              "type": "string"
+            },
+            {
+              "id": "99abc244-ff4b-4618-9523-84dda6c5e75e",
+              "name": "=rejected_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        416,
+        -688
+      ],
+      "id": "9be71192-fb7b-4803-9f85-711f0bc7640d",
+      "name": "Prepare Stock Rejection"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "lines",
+        "include": "allOtherFields",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        384,
+        -1072
+      ],
+      "id": "1e55fc44-b61b-4de0-af1a-c2837bb2e8af",
+      "name": "Split Approved Lines"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_INVENTORY_PRODUCTS_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "inventory_products"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "sku",
+              "keyValue": "={{ $json.lines.sku }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "stock_quantity": "={{ $json.lines.remaining_stock }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "sku",
+              "displayName": "sku",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "product_name",
+              "displayName": "product_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "unit_price",
+              "displayName": "unit_price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "stock_quantity",
+              "displayName": "stock_quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "reorder_level",
+              "displayName": "reorder_level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "active",
+              "displayName": "active",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        608,
+        -1152
+      ],
+      "id": "f967a099-7fcb-4b44-843d-3495e3847b3b",
+      "name": "Update Inventory Stock"
+    },
+    {
+      "parameters": {
+        "jsCode": "const order = $('Summarise Order Assessment').first().json;\n\nconst updatedProducts = $input.all().map(item => ({\n  sku: item.json.sku,\n  remaining_stock: Number(item.json.stock_quantity)\n}));\n\nreturn [{\n  json: {\n    ...order,\n    status: 'Processed',\n    processed_at: new Date().toISOString(),\n    updated_products: updatedProducts\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        -1120
+      ],
+      "id": "fcda6a91-c3a3-428e-8ae9-7db1b00bda57",
+      "name": "Prepare Completed Order"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_PROCESSED_ORDERS_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "processed_orders"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "order_reference": "={{ $json.order_reference }}",
+            "customer_email": "={{ $json.customer_email }}",
+            "status": "={{ $json.status }}",
+            "received_at": "={{ $json.received_at }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "order_reference",
+              "displayName": "order_reference",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "customer_email",
+              "displayName": "customer_email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1040,
+        -1120
+      ],
+      "id": "ff5ef081-322c-46d7-af38-0c07107a1b28",
+      "name": "Record Processed Order"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6bacd2b2-377e-48a0-9dac-b604bc8457df",
+              "leftValue": "={{ $('Prepare Completed Order').first().json.low_stock_after_order }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        784,
+        -592
+      ],
+      "id": "f656009c-aa83-4c8d-bbdb-aaa846753dd4",
+      "name": "Low Stock After Order?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "56a28ed5-b58c-4596-a46e-4cec390d6a41",
+              "name": "alert_type",
+              "value": "Low stock",
+              "type": "string"
+            },
+            {
+              "id": "7740378d-f681-4bd8-a239-0924e68deba5",
+              "name": "alert_message",
+              "value": "={{ 'Low stock detected after processing order ' + $('Prepare Completed Order').first().json.order_reference + '. Review inventory levels.' }}",
+              "type": "string"
+            },
+            {
+              "id": "0ac1d296-cdc5-4340-8919-3baf303b4046",
+              "name": "alert_created_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        928,
+        -800
+      ],
+      "id": "57589350-285f-4017-aacb-699b57667ddb",
+      "name": "Prepare Low Stock Alert"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "74ff3416-2caf-4ead-8c22-c077e0b66ffd",
+              "name": "confirmation_recipient",
+              "value": "={{ $('Prepare Completed Order').first().json.customer_email }}",
+              "type": "string"
+            },
+            {
+              "id": "e56f0cfb-1f1f-4f15-bc81-16ed50a0bb30",
+              "name": "confirmation_subject",
+              "value": "={{ 'Order confirmed: ' + $('Prepare Completed Order').first().json.order_reference }}",
+              "type": "string"
+            },
+            {
+              "id": "914bc58a-d8c1-4fc8-ae51-8003fdbe6795",
+              "name": "confirmation_message",
+              "value": "={{ `Hello ${$('Prepare Completed Order').first().json.customer_name},  Your order ${$('Prepare Completed Order').first().json.order_reference} has been processed successfully.  Order total: £${Number($('Prepare Completed Order').first().json.order_total).toFixed(2)} Shipping method: ${$('Prepare Completed Order').first().json.shipping_method}  Thank you.` }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1168,
+        -416
+      ],
+      "id": "986d3ae1-bde7-43d0-90ea-84a6af93c157",
+      "name": "Prepare Order Confirmation"
+    },
+    {
+      "parameters": {
+        "sendTo": "inventory-alerts@example.com",
+        "subject": "={{ 'Low-stock alert: ' + $('Prepare Completed Order').first().json.order_reference }}",
+        "emailType": "text",
+        "message": "={{ $json.alert_message }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1248,
+        -784
+      ],
+      "id": "48087d1f-cb00-44af-8992-eeb07b76086d",
+      "name": "Send Low Stock Alert"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "36a032a0-75d1-4bab-b6f8-12d0cc75dd19",
+              "leftValue": "={{ Boolean($json.order_reference) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1136,
+        -1248
+      ],
+      "id": "7f9bb898-eba1-4bd4-b109-28c9c80e3185",
+      "name": "New Order?",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b5ab9620-b46d-48af-aacf-0559d2e7e5c7",
+              "name": "order_reference",
+              "value": "={{ $('Parse Order Items').first().json.order_reference }}",
+              "type": "string"
+            },
+            {
+              "id": "4e552bd6-6790-4cf9-bf81-91e7cebc93f4",
+              "name": "customer_name",
+              "value": "={{ $('Parse Order Items').first().json.customer_name }}",
+              "type": "string"
+            },
+            {
+              "id": "e81513cb-5ba2-49fc-8807-7bb9d07a1eac",
+              "name": "customer_email",
+              "value": "={{ $('Parse Order Items').first().json.customer_email }}",
+              "type": "string"
+            },
+            {
+              "id": "ddee1411-da1e-4c96-b147-2d0e8c1d8573",
+              "name": "status",
+              "value": "Rejected",
+              "type": "string"
+            },
+            {
+              "id": "0ca78b41-401b-4f6e-8421-5e41bade0994",
+              "name": "rejection_stage",
+              "value": "Duplicate check",
+              "type": "string"
+            },
+            {
+              "id": "f8f35ed8-849d-40e9-a0e4-1a2a7bea53f6",
+              "name": "rejection_reason",
+              "value": "This order reference has already been processed.",
+              "type": "string"
+            },
+            {
+              "id": "7acbf056-9f42-478d-8da0-997b42045d7b",
+              "name": "rejected_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -256,
+        -816
+      ],
+      "id": "fef64de2-0cc6-4f5c-9a54-d8fcbee07430",
+      "name": "Prepare Duplicate Rejection"
+    },
+    {
+      "parameters": {
+        "sendTo": "test-customer@example.com",
+        "subject": "={{ $json.confirmation_subject }}",
+        "emailType": "text",
+        "message": "={{ $json.confirmation_message }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1424,
+        -496
+      ],
+      "id": "0548ea4d-4264-4147-84c3-c65b185fac0e",
+      "name": "Send Order Confirmation?"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Order Form": {
+      "main": [
+        [
+          {
+            "node": "Normalise Order Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalise Order Data": {
+      "main": [
+        [
+          {
+            "node": "Parse Order Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Order Items": {
+      "main": [
+        [
+          {
+            "node": "Valid Order?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid Order?": {
+      "main": [
+        [
+          {
+            "node": "New Order Only",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Validation Rejection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New Order Only": {
+      "main": [
+        [
+          {
+            "node": "New Order?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Order Items": {
+      "main": [
+        [
+          {
+            "node": "Look Up Inventory Product",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Look Up Inventory Product": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Inventory Item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Inventory Item": {
+      "main": [
+        [
+          {
+            "node": "Summarise Order Assessment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarise Order Assessment": {
+      "main": [
+        [
+          {
+            "node": "All Stock Available?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "All Stock Available?": {
+      "main": [
+        [
+          {
+            "node": "Split Approved Lines",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Stock Rejection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Approved Lines": {
+      "main": [
+        [
+          {
+            "node": "Update Inventory Stock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Inventory Stock": {
+      "main": [
+        [
+          {
+            "node": "Prepare Completed Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Completed Order": {
+      "main": [
+        [
+          {
+            "node": "Record Processed Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Processed Order": {
+      "main": [
+        [
+          {
+            "node": "Low Stock After Order?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Low Stock After Order?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Low Stock Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Order Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Low Stock Alert": {
+      "main": [
+        [
+          {
+            "node": "Send Low Stock Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Order Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Send Order Confirmation?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Low Stock Alert": {
+      "main": [
+        [
+          {
+            "node": "Prepare Order Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New Order?": {
+      "main": [
+        [
+          {
+            "node": "Split Order Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Duplicate Rejection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "nodeGroups": [],
+  "tags": []
+}

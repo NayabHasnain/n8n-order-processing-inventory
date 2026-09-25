@@ -1,0 +1,43 @@
+{
+  "instructions": "Use fictional data only. Replace example SKUs with SKUs that exist in your test inventory table.",
+  "successful_order": {
+    "order_reference": "WEB-DEMO-1001",
+    "customer_name": "Taylor Reed",
+    "customer_email": "taylor.reed@example.com",
+    "delivery_postcode": "M1 1AE",
+    "shipping_method": "Standard",
+    "items_json": "[{\"sku\":\"SKU-1001\",\"name\":\"Demo Product A\",\"quantity\":2}]",
+    "customer_notes": "Leave the parcel with reception."
+  },
+  "low_stock_order": {
+    "order_reference": "WEB-DEMO-1002",
+    "customer_name": "Morgan Lee",
+    "customer_email": "morgan.lee@example.com",
+    "delivery_postcode": "M2 2BB",
+    "shipping_method": "Express",
+    "items_json": "[{\"sku\":\"SKU-LOW-01\",\"name\":\"Low Stock Demo Product\",\"quantity\":2}]",
+    "customer_notes": "Fictional low-stock test."
+  },
+  "insufficient_stock_order": {
+    "order_reference": "WEB-DEMO-1003",
+    "customer_name": "Avery Patel",
+    "customer_email": "avery.patel@example.com",
+    "delivery_postcode": "M3 3CC",
+    "shipping_method": "Standard",
+    "items_json": "[{\"sku\":\"SKU-1001\",\"name\":\"Demo Product A\",\"quantity\":999}]",
+    "customer_notes": "Fictional stock-rejection test."
+  },
+  "duplicate_order_test": {
+    "instruction": "Submit successful_order twice without changing order_reference. The second submission should follow the duplicate-rejection path."
+  },
+  "invalid_items_test": {
+    "order_reference": "WEB-DEMO-1004",
+    "customer_name": "Jamie Smith",
+    "customer_email": "jamie.smith@example.com",
+    "delivery_postcode": "M4 4DD",
+    "shipping_method": "Standard",
+    "items_json": "not valid JSON",
+    "customer_notes": "Fictional validation-rejection test."
+  }
+}
+
